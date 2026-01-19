@@ -33,7 +33,7 @@
 
 ### Установка (один клик!):
 ```bash
-git clone https://github.com/ваш-username/uzbek-web-server.git
+git clone https://github.com/Krutifulmen/UzbekWebServer.git
 cd uzbek-web-server
 chmod +x install.sh
 ./install.sh
