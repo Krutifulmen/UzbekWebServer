@@ -1,0 +1,339 @@
+#!/bin/bash
+
+# Uzbek Web Server (UzWS) - минималистичный веб-сервер на Bash
+# Версия 2.0 "Plov Edition" 🇺🇿
+
+set -e
+
+# Цвета для красивого вывода
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# Галочки и символы
+CHECK="✅"
+INFO="🔷"
+WARN="🔶"
+ERROR="🔴"
+SERVER="🚀"
+
+# Функция помощи
+show_help() {
+    echo -e "${GREEN}"
+    echo "╔══════════════════════════════════════════════════════════╗"
+    echo "║          Uzbek Web Server (UzWS) - Помощь               ║"
+    echo "║                 Версия 2.0 'Plov Edition'               ║"
+    echo "╚══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "${CYAN}${BOLD}Использование:${NC}"
+    echo "  uzws [порт] [директория]  ${CHECK} Запустить сервер"
+    echo "  uzws --help               ${CHECK} Показать эту справку"
+    echo "  uzws -h                   ${CHECK} То же самое"
+    echo "  uzws --version            ${CHECK} Показать версию"
+    echo "  uzws -v                   ${CHECK} То же самое"
+    echo "  uzbekwebserver            ${CHECK} Алиас для uzws"
+    echo ""
+    echo -e "${CYAN}${BOLD}Примеры:${NC}"
+    echo "  uzws 8080 ./public        ${CHECK} Порт 8080, папка public"
+    echo "  uzws 3000                 ${CHECK} Порт 3000, текущая папка"
+    echo "  uzws                      ${CHECK} Порт 8080 (по умолчанию)"
+    echo ""
+    echo -e "${CYAN}${BOLD}Особенности:${NC}"
+    echo "  ${CHECK} Автоопределение MIME-типов файлов"
+    echo "  ${CHECK} Защита от directory traversal атак"
+    echo "  ${CHECK} Красивые страницы ошибок на русском"
+    echo "  ${CHECK} Логирование запросов в реальном времени"
+    echo "  ${CHECK} Не требует установки дополнительных пакетов"
+    echo "  ${CHECK} Работает на любом Linux с netcat"
+    echo ""
+    echo -e "${PURPLE}Остановка сервера: ${YELLOW}Ctrl+C${NC}"
+    echo ""
+}
+
+# Функция показа версии
+show_version() {
+    echo -e "${GREEN}"
+    echo "╔══════════════════════════════════════════╗"
+    echo "║   Uzbek Web Server (UzWS) v2.0          ║"
+    echo "║   'Plov Edition' 🇺🇿                    ║"
+    echo "║   Сделано с ❤️ в Узбекистане            ║"
+    echo "╚══════════════════════════════════════════╝${NC}"
+    echo -e "${CHECK} ${CYAN}Поддерживаемые MIME-типы: HTML, CSS, JS, JSON, изображения${NC}"
+    echo -e "${CHECK} ${CYAN}Максимальная простота - один bash-скрипт!${NC}"
+}
+
+# Обработка аргументов
+if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+    show_help
+    exit 0
+fi
+
+if [[ "$1" == "--version" || "$1" == "-v" ]]; then
+    show_version
+    exit 0
+fi
+
+# Параметры по умолчанию
+PORT="${1:-8080}"
+DIR="${2:-.}"
+
+# Проверяем netcat (nc)
+if ! command -v nc &> /dev/null; then
+    echo -e "${ERROR} ${RED}Ошибка: netcat (nc) не установлен!${NC}"
+    echo -e "${INFO} ${YELLOW}Установите командой:${NC}"
+    echo "  sudo apt-get install netcat-openbsd"
+    echo "  или"
+    echo "  sudo yum install nc"
+    exit 1
+fi
+
+# Проверяем существование директории
+if [ ! -d "$DIR" ]; then
+    echo -e "${ERROR} ${RED}Ошибка: Директория '$DIR' не существует!${NC}"
+    echo -e "${INFO} ${YELLOW}Создайте директорию или укажите существующую${NC}"
+    exit 1
+fi
+
+# Переходим в директорию
+cd "$DIR"
+
+# Заголовок сервера
+echo -e "${GREEN}"
+echo "╔═══════════════════════════════════════════════════╗"
+echo "║     Uzbek Web Server (UzWS) запущен!             ║"
+echo "║            Версия 2.0 'Plov Edition'             ║"
+echo "╚═══════════════════════════════════════════════════╝${NC}"
+echo ""
+echo -e "${SERVER} ${CYAN}Сервер слушает:${NC} ${YELLOW}http://localhost:${PORT}${NC}"
+echo -e "${CHECK} ${CYAN}Корневая директория:${NC} ${YELLOW}$(pwd)${NC}"
+echo -e "${CHECK} ${CYAN}Доступные файлы:${NC}"
+ls -la | grep "^-" | head -5 | while read line; do
+    filename=$(echo "$line" | awk '{print $9}')
+    echo -e "  ${GREEN}→${NC} $filename"
+done
+echo ""
+echo -e "${WARN} ${YELLOW}Для остановки сервера нажмите:${NC} ${RED}Ctrl+C${NC}"
+echo -e "${INFO} ${BLUE}Журнал запросов:${NC}"
+echo "════════════════════════════════════════════════════"
+
+# Функция для логирования
+log_request() {
+    echo -e "${GREEN}[$(date '+%H:%M:%S')]${NC} ${CYAN}$1${NC} ${YELLOW}$2${NC} -> ${BLUE}$3${NC}"
+}
+
+# Создаем страницу 403
+create_403_page() {
+    cat << EOF
+HTTP/1.1 403 Forbidden
+Server: UzWS/2.0 (Uzbek Web Server)
+Content-Type: text/html; charset=utf-8
+Connection: close
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>403 - Доступ запрещен</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            padding: 50px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .error-code {
+            font-size: 8em;
+            font-weight: bold;
+            margin: 0;
+            text-shadow: 3px 3px 0 rgba(0,0,0,0.2);
+        }
+        .message {
+            font-size: 2em;
+            margin: 20px 0;
+        }
+        .details {
+            font-size: 1.2em;
+            max-width: 600px;
+            margin: 20px auto;
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+        }
+        .emoji {
+            font-size: 4em;
+            margin: 20px;
+        }
+        .server-info {
+            margin-top: 30px;
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="emoji">🚫</div>
+    <h1 class="error-code">403</h1>
+    <div class="message">Доступ запрещен!</div>
+    <div class="details">
+        <p>Uzbek Web Server заблокировал этот запрос из соображений безопасности.</p>
+        <p>Попытка доступа к запрещенным директориям отслеживается и предотвращается.</p>
+    </div>
+    <div class="server-info">
+        Uzbek Web Server v2.0 | 🇺🇿 Безопасность прежде всего
+    </div>
+</body>
+</html>
+EOF
+}
+
+# Создаем страницу 404
+create_404_page() {
+    cat << EOF
+HTTP/1.1 404 Not Found
+Server: UzWS/2.0 (Uzbek Web Server)
+Content-Type: text/html; charset=utf-8
+Connection: close
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>404 - Страница не найдена</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            padding: 50px;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .error-code {
+            font-size: 8em;
+            font-weight: bold;
+            margin: 0;
+            text-shadow: 3px 3px 0 rgba(0,0,0,0.2);
+        }
+        .message {
+            font-size: 2em;
+            margin: 20px 0;
+        }
+        .details {
+            font-size: 1.2em;
+            max-width: 600px;
+            margin: 20px auto;
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+        }
+        .food-emoji {
+            font-size: 4em;
+            margin: 20px;
+        }
+        .uzbek-item {
+            display: inline-block;
+            margin: 10px;
+            padding: 10px 20px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 20px;
+        }
+        .server-info {
+            margin-top: 30px;
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="food-emoji">🍚</div>
+    <h1 class="error-code">404</h1>
+    <div class="message">Страница не найдена!</div>
+    <div class="details">
+        <p>Запрошенная страница не существует на этом сервере.</p>
+        <p>Пока вы здесь, попробуйте узбекскую кухню:</p>
+        <div>
+            <span class="uzbek-item">🍚 Плов</span>
+            <span class="uzbek-item">🥟 Манты</span>
+            <span class="uzbek-item">🍢 Шашлык</span>
+            <span class="uzbek-item">🍞 Лепешка</span>
+        </div>
+    </div>
+    <div class="server-info">
+        Uzbek Web Server v2.0 | 🇺🇿 С любовью из Узбекистана
+    </div>
+</body>
+</html>
+EOF
+}
+
+# Основной цикл сервера
+while true; do
+    {
+        # Читаем запрос
+        read -r request
+        method=$(echo "$request" | awk '{print $1}')
+        path=$(echo "$request" | awk '{print $2}' | cut -d'?' -f1)
+        
+        # Убираем начальный слэш
+        path="${path#/}"
+        [ -z "$path" ] && path="index.html"
+        
+        # Защита от directory traversal
+        if [[ "$path" == *..* || "$path" == /* ]]; then
+            log_request "$method" "$path" "403 Forbidden"
+            create_403_page
+            continue
+        fi
+        
+        # Определяем MIME-тип
+        case "$path" in
+            *.html|*.htm)   mime="text/html; charset=utf-8" ;;
+            *.css)          mime="text/css; charset=utf-8" ;;
+            *.js)           mime="application/javascript; charset=utf-8" ;;
+            *.json)         mime="application/json; charset=utf-8" ;;
+            *.jpg|*.jpeg)   mime="image/jpeg" ;;
+            *.png)          mime="image/png" ;;
+            *.gif)          mime="image/gif" ;;
+            *.svg)          mime="image/svg+xml" ;;
+            *.ico)          mime="image/x-icon" ;;
+            *.txt)          mime="text/plain; charset=utf-8" ;;
+            *)              mime="application/octet-stream" ;;
+        esac
+        
+        # Проверяем существование файла
+        if [ -f "$path" ]; then
+            size=$(stat -c%s "$path" 2>/dev/null || echo "0")
+            log_request "$method" "$path" "200 OK"
+            echo "HTTP/1.1 200 OK"
+            echo "Server: UzWS/2.0 (Uzbek Web Server)"
+            echo "Content-Type: $mime"
+            echo "Content-Length: $size"
+            echo "Connection: close"
+            echo "X-Powered-By: Plov, Non и Uzbek Tea"
+            echo "X-Server: 🇺🇿 Uzbek Web Server v2.0"
+            echo ""
+            cat "$path"
+        else
+            # 404 - страница не найдена
+            log_request "$method" "$path" "404 Not Found"
+            create_404_page
+        fi
+    } | nc -l -p "$PORT" -q 1 2>/dev/null || break
+done
+
+echo ""
+echo -e "${INFO} ${YELLOW}Сервер остановлен. До свидания!${NC}"
+echo -e "${CHECK} ${GREEN}Uzbek Web Server - всегда к вашим услугам! 🇺🇿${NC}"
